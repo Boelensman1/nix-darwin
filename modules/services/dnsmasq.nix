@@ -65,17 +65,24 @@ in
     };
   };
 
-  config = mkIf cfg.enable {
+  config = mkIf cfg.enable (let
+    addressArgs = mapA (domain: addr: "--address=/${domain}/${addr}") cfg.addresses;
+    serverArgs = map (server: "--server=${server}") cfg.servers;
+    dnsmasqArgs = [
+      "--listen-address=${cfg.bind}"
+      "--port=${toString cfg.port}"
+      "--keep-in-foreground"
+    ] ++ addressArgs ++ serverArgs;
+    dnsmasqCmd = "${cfg.package}/bin/dnsmasq ${concatStringsSep " " dnsmasqArgs}";
+  in {
     environment.systemPackages = [ cfg.package ];
 
     launchd.daemons.dnsmasq = {
       serviceConfig.ProgramArguments = [
-        "${cfg.package}/bin/dnsmasq"
-        "--listen-address=${cfg.bind}"
-        "--port=${toString cfg.port}"
-        "--keep-in-foreground"
-      ] ++ (mapA (domain: addr: "--address=/${domain}/${addr}") cfg.addresses)
-        ++ (map (server: "--server=${server}") cfg.servers);
+        "/bin/sh"
+        "-c"
+        "/bin/wait4path /nix/store && exec ${dnsmasqCmd}"
+      ];
 
       serviceConfig.KeepAlive = true;
       serviceConfig.RunAtLoad = true;
@@ -91,5 +98,5 @@ in
           '';
       };
     }) (builtins.attrNames cfg.addresses));
-  };
+  });
 }
